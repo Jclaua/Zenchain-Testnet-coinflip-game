@@ -1,0 +1,230 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Zenchain Testnet - Coin Flip</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 700px;
+      margin: 40px auto;
+      line-height: 1.5;
+      background: #f9faf9;
+      color: #333;
+      text-align: center;
+    }
+    h1 {
+      color: #2e7d32;
+      margin-top: 10px;
+    }
+    .logo {
+      max-width: 120px;
+      margin: 0 auto 10px;
+      display: block;
+    }
+    .card {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      margin-top: 20px;
+      text-align: left;
+    }
+    input, select, button {
+      padding: 10px;
+      margin: 6px 0;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      width: 100%;
+      font-size: 14px;
+    }
+    button {
+      background: #4caf50;
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    .disconnect {
+      background: #d32f2f !important;
+    }
+    .status {
+      background: #e8f5e9;
+      padding: 12px;
+      border-radius: 6px;
+      margin-top: 20px;
+      border: 1px solid #c8e6c9;
+    }
+    #addr {
+      font-weight: bold;
+      color: #2e7d32;
+      margin-left: 10px;
+    }
+    label {
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  
+<img src="https://zenchain.io/og-image.jpg" alt="Zenchain Logo" class="logo">
+
+  <h1>Zenchain Testnet — Coin Flip</h1>
+  <p><strong>Note:</strong>This dapps is for Zenchain Testnet only</p>
+
+  <div class="card">
+    <button id="connectBtn">Connect Wallet</button>
+    <span id="addr"></span>
+  </div>
+
+  <div class="card">
+    <label>Bet amount 5 or more (in ZTC):</label>
+    <input id="betAmount" type="number" step='0' value="0" />
+    <select id="guess">
+      <option value="true">Heads</option>
+      <option value="false">Tails</option>
+    </select>
+    <button id="flipBtn">Flip Coin</button>
+  </div>
+
+  <div class="status">
+    <div id="status">Not connected.</div>
+    <div id="tx"></div>
+  </div>
+
+<script>
+  //this is the contract address from remix code in the deploy & txn 
+const contractAddress = "0x3efE052Bb8c2Aa524A4cF59F2D0387A89542e084";
+const abi = [
+  "function flip(bool _guess) public payable",
+  "event BetPlaced(address indexed player, uint256 amount, bool guess, bool win, uint256 payout)"
+];
+
+let provider, signer, contract;
+let walletConnected = false; // track if wallet is connected
+
+// connect wallet function
+async function connectWallet(){
+  if (!window.ethereum) {
+    alert('Install MetaMask or similar wallet');
+    return;
+  }
+  provider = new ethers.providers.Web3Provider(window.ethereum);
+  await provider.send('eth_requestAccounts', []);
+  signer = provider.getSigner();
+  const addr = await signer.getAddress();
+  document.getElementById('addr').innerText = addr;
+  contract = new ethers.Contract(contractAddress, abi, signer);
+  document.getElementById('status').innerText = 'Wallet connected.';
+  listenEvents();
+
+  walletConnected = true;
+  updateConnectButton();
+}
+
+// disconnect wallet function
+function disconnectWallet(){
+  provider = null;
+  signer = null;
+  contract = null;
+  document.getElementById('addr').innerText = '';
+  document.getElementById('status').innerText = 'Not connected.';
+  document.getElementById('tx').innerText = '';
+
+  walletConnected = false;
+  updateConnectButton();
+}
+
+// change button text/style depending on wallet status
+function updateConnectButton(){
+  const btn = document.getElementById('connectBtn');
+  if (walletConnected) {
+    btn.textContent = 'Disconnect Wallet';
+    btn.classList.add('disconnect');
+  } else {
+    btn.textContent = 'Connect Wallet';
+    btn.classList.remove('disconnect');
+  }
+}
+
+async function placeBet() {
+  if (!contract) { 
+    alert('Connect wallet first'); 
+    return; 
+  }
+
+  const amount = document.getElementById('betAmount').value;
+  const guess = document.getElementById('guess').value === 'true';
+  //bet should be more than or equal to 5, if the user input less than there will be an error message
+  if (Number(amount) < 5) { 
+    alert('Bet must be at least 5 ZTC'); 
+    return; 
+  }
+
+  const value = ethers.utils.parseEther(String(amount));
+
+  try {
+    document.getElementById('status').innerText = 'Sending transaction...';
+    const tx = await contract.flip(guess, { value });
+    document.getElementById('tx').innerText = 'Tx hash: ' + tx.hash;
+    await tx.wait();
+    document.getElementById('status').innerText = 'Transaction mined. Check events for result.';
+  } catch (err) {
+    console.error(err);
+
+    let reason = 'Transaction failed.';
+    if (err.data && err.data.message) {
+      reason = err.data.message;
+    } else if (err.error && err.error.message) {
+      reason = err.error.message;
+    } else if (err.reason) {
+      reason = err.reason;
+    }
+    //zenchain is user friendly so i'll make it user friendy 
+    if (reason.includes('minBetWei')) {
+      reason = 'Bet amount is below the minimum allowed.';
+    } else if (reason.includes('insufficient funds')) {
+      reason = 'Contract does not have enough balance to pay out.';
+    }
+
+    document.getElementById('status').innerText = '❌ ' + reason;
+  }
+}
+
+//function to know if the user win or loss the game
+function listenEvents(){
+  contract.on('BetPlaced', (player, amount, guess, win, payout, event) => {
+    const a = ethers.utils.formatEther(amount);
+    const p = ethers.utils.formatEther(payout || 0);
+
+    signer.getAddress().then(addr => {
+      if (player.toLowerCase() === addr.toLowerCase()) {
+        if (win) {
+          alert(`🎉 You won! Payout: ${p} ZTC`);
+        } else {
+          alert(`😢 You lost. Bet amount: ${a} ZTC`);
+        }
+      }
+    });
+
+    document.getElementById('status').innerText =
+      `Bet by ${player} for ${a} ZTC — Guess: ${guess} — Win: ${win} — Payout: ${p} ZTC`;
+  });
+}
+
+// toggle connect/disconnect when button is clicked
+document.getElementById('connectBtn').addEventListener('click', () => {
+  if (walletConnected) {
+    disconnectWallet();
+  } else {
+    connectWallet();
+  }
+});
+document.getElementById('flipBtn').addEventListener('click', placeBet);
+</script>
+</body>
+</html>
