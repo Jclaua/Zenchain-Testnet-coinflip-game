@@ -9,6 +9,7 @@ pragma solidity ^0.8.17;
 */
 
 contract CoinFlip {
+
     address public owner;
     uint256 public constant MIN_BET = 5 ether; // 5 ZTC in wei
 
