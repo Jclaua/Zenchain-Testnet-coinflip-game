@@ -21,3 +21,5 @@ Deploying via Remix (quickest)
      Example: 10000000000000000
 5. Confirm transaction in MetaMask and wait for deployment.
 6. Copy the deployed contract address and replace the placeholder in frontend/index.html (REPLACE_WITH_DEPLOYED_CONTRACT_ADDRESS)
+
+NOTE: I JUST FUNDED 1000 ZTC ONLY, IF FURTHER USE I CAN SUPPLY ZTC TESTENET TOKEN.
